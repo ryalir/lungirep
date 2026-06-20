@@ -8,8 +8,7 @@ const uri = process.env.MONGO_URI;
 // FIX: Added maxPoolSize and keepAlive to prevent random dropouts
 const client = new MongoClient(uri, {
     maxPoolSize: 10,
-    socketTimeoutMS: 45000,
-    keepAlive: true
+    socketTimeoutMS: 45000
 });
 
 let db;
