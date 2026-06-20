@@ -23,6 +23,10 @@ connectDB();
 // 1. PULL COURSE DATA (Android calls this to view courses)
 app.get('/get-courses', async (req, res) => {
     try {
+        // Fix: Check if db is ready. If not, try to connect or return an error.
+        if (!db) {
+            return res.status(500).json({ error: "Database not connected yet. Please try again in a moment." });
+        }
         const collection = db.collection("items");
         const data = await collection.find({}).toArray();
         res.status(200).json(data);
@@ -34,9 +38,12 @@ app.get('/get-courses', async (req, res) => {
 // 2. PUSH COURSE DATA (Android calls this to upload a course)
 app.post('/save-course', async (req, res) => {
     try {
+        // Fix: Check if db is ready.
+        if (!db) {
+            return res.status(500).json({ error: "Database not connected yet. Please try again in a moment." });
+        }
         const collection = db.collection("items");
         
-        // Get today's date and strip the time for midnight storage
         const today = new Date();
         const midnightDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
 
@@ -47,7 +54,7 @@ app.post('/save-course', async (req, res) => {
             semester: req.body.semester,
             regulation: req.body.regulation,
             fileUrl: req.body.fileUrl,
-            createOn: midnightDate, // Saved as real date at midnight
+            createOn: midnightDate, 
             uploadedBy: req.body.uploadedBy
         };
 
