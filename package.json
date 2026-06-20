@@ -6,7 +6,10 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "mongodb": "^6.5.0"
+    "express": "^4.22.2",
+    "googleapis": "^173.0.0",
+    "mongodb": "^6.5.0",
+    "mongoose": "^9.7.1",
+    "multer": "^2.2.0"
   }
 }
