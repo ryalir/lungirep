@@ -47,9 +47,17 @@ oauth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN })
 const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
 
-// 5. Save Course with File Upload Endpoint
+// 5. Save Course with File Upload Endpoint (With Detailed Diagnostics)
 app.post('/save-course', upload.single('file'), async (req, res) => {
   try {
+    // 🔍 SERVER LOGS: Check your Render console for these outputs!
+    console.log("=== NEW UPLOAD REQUEST ===");
+    console.log("Received Body Fields:", req.body);
+    console.log("Is File Attached?:", req.file ? "YES" : "NO");
+    if (req.file) {
+      console.log(`File Name: ${req.file.originalname}, MimeType: ${req.file.mimetype}, Size: ${req.file.size} bytes`);
+    }
+
     const { courseCode, courseName, year, semester, regulation, uploadedBy } = req.body;
 
     if (!courseCode || !courseName) {
@@ -58,9 +66,10 @@ app.post('/save-course', upload.single('file'), async (req, res) => {
 
     let finalFileUrl = "";
 
-    // If a file is included in the request, stream it to Google Drive
     if (req.file) {
       const fileStream = Readable.from(req.file.buffer);
+      
+      // Upload the file binary chunk
       const driveResponse = await drive.files.create({
         requestBody: {
           name: req.file.originalname,
@@ -70,11 +79,28 @@ app.post('/save-course', upload.single('file'), async (req, res) => {
           mimeType: req.file.mimetype,
           body: fileStream
         },
-        fields: 'webViewLink'
+        fields: 'id, webViewLink' // Added 'id' to change permissions next
       });
-      
-      // Extract the shareable Google Drive view link
+
+      const fileId = driveResponse.data.id;
       finalFileUrl = driveResponse.data.webViewLink;
+      console.log("Google Drive Upload Successful. File ID:", fileId);
+
+      // 🔐 CHANGE PERMISSIONS: This ensures anyone with your MongoDB link can open the file
+      try {
+        await drive.permissions.create({
+          fileId: fileId,
+          requestBody: {
+            role: 'reader',
+            type: 'anyone'
+          }
+        });
+        console.log("File visibility set to 'Anyone with link'.");
+      } catch (permError) {
+        console.warn("Could not alter file permissions automatically:", permError.message);
+      }
+    } else {
+      console.warn("⚠️ Warning: Request skipped Google Drive because 'req.file' is undefined.");
     }
 
     // Save metadata completely inline with your document structure
@@ -84,18 +110,22 @@ app.post('/save-course', upload.single('file'), async (req, res) => {
       year,
       semester,
       regulation,
-      fileUrl: finalFileUrl, 
+      fileUrl: finalFileUrl, // Will be an empty string if req.file is missing
       uploadedBy: uploadedBy || 'Anonymous'
     });
 
     await newCourse.save();
-    res.status(201).json({ message: 'Course uploaded and saved to lungi collection1 successfully!', course: newCourse });
+    res.status(201).json({ 
+      message: req.file ? 'Course and file saved successfully!' : 'Course details saved, but NO file was received.', 
+      course: newCourse 
+    });
 
   } catch (error) {
-    console.error('Save Course Error:', error);
-    res.status(500).json({ error: 'Server failed to save course structure.' });
+    console.error('CRITICAL ERROR during save-course execution:', error);
+    res.status(500).json({ error: 'Server failed to save course structure.', details: error.message });
   }
 });
+
 
 
 // 6. Get Courses Endpoint
