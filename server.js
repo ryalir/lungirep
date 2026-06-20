@@ -5,7 +5,12 @@ const app = express();
 app.use(express.json()); 
 
 const uri = process.env.MONGO_URI; 
-const client = new MongoClient(uri);
+// FIX: Added maxPoolSize and keepAlive to prevent random dropouts
+const client = new MongoClient(uri, {
+    maxPoolSize: 10,
+    socketTimeoutMS: 45000,
+    keepAlive: true
+});
 
 let db;
 
