@@ -1,3 +1,6 @@
+// Load local environment variables if running locally
+require('dotenv').config();
+
 const express = require('express');
 const multer = require('multer');
 const mongoose = require('mongoose');
@@ -10,22 +13,26 @@ const port = process.env.PORT || 3000;
 // Middleware to process traditional JSON requests
 app.use(express.json());
 
-// 1. Connect to MongoDB using Render Env Variable
+// 1. Connect to MongoDB using your updated Render Env Variable (Targeting 'lungi' DB)
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('MongoDB Connected'))
+  .then(() => console.log('MongoDB Connected to lungi database'))
   .catch(err => console.error('MongoDB Connection Error:', err));
 
-// 2. Exact Match Course Schema 
+// 2. Exact Match Course Schema mapping to your exact collection
 const CourseSchema = new mongoose.Schema({
   courseCode: { type: String, required: true },
   courseName: { type: String, required: true },
   year: String,
   semester: String,
   regulation: String,
-  fileUrl: String, // Will store the resulting Google Drive view link
+  fileUrl: String, 
   uploadedBy: String,
-  createOn: { type: Date, default: Date.now } // Automatically generates the current timestamp
+  createOn: { type: Date, default: Date.now } 
+}, { 
+  // This explicitly forces Mongoose to use your exact collection name instead of auto-pluralising it
+  collection: 'lungi collection1' 
 });
+
 const CourseModel = mongoose.model('Course', CourseSchema);
 
 // 3. Configure Multer to process files in memory safely
@@ -41,7 +48,6 @@ const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
 
 // 5. Save Course with File Upload Endpoint
-// Accepts multipart/form-data containing fields (courseCode, courseName, etc.) + a file
 app.post('/save-course', upload.single('file'), async (req, res) => {
   try {
     const { courseCode, courseName, year, semester, regulation, uploadedBy } = req.body;
@@ -83,7 +89,7 @@ app.post('/save-course', upload.single('file'), async (req, res) => {
     });
 
     await newCourse.save();
-    res.status(201).json({ message: 'Course uploaded and saved successfully!', course: newCourse });
+    res.status(201).json({ message: 'Course uploaded and saved to lungi collection1 successfully!', course: newCourse });
 
   } catch (error) {
     console.error('Save Course Error:', error);
@@ -95,7 +101,7 @@ app.post('/save-course', upload.single('file'), async (req, res) => {
 // 6. Get Courses Endpoint
 app.get('/get-courses', async (req, res) => {
   try {
-    // Fetches all entries sorted by the newest creation date
+    // Fetches all entries sorted by the newest creation date from lungi collection1
     const courses = await CourseModel.find().sort({ createOn: -1 });
     res.status(200).json(courses);
   } catch (error) {
