@@ -12,7 +12,8 @@ let db;
 async function connectDB() {
     try {
         await client.connect();
-        db = client.db("myAndroidApp"); 
+        // CHANGED: Your real database name is "lungi"
+        db = client.db("lungi"); 
         console.log("Connected to MongoDB!");
     } catch (e) {
         console.error("Database connection error:", e);
@@ -20,14 +21,14 @@ async function connectDB() {
 }
 connectDB();
 
-// 1. PULL COURSE DATA (Android calls this to view courses)
+// 1. PULL COURSE DATA
 app.get('/get-courses', async (req, res) => {
     try {
-        // Fix: Check if db is ready. If not, try to connect or return an error.
         if (!db) {
             return res.status(500).json({ error: "Database not connected yet. Please try again in a moment." });
         }
-        const collection = db.collection("items");
+        // CHANGED: Your real collection name is "lungi collection1"
+        const collection = db.collection("lungi collection1");
         const data = await collection.find({}).toArray();
         res.status(200).json(data);
     } catch (error) {
@@ -35,14 +36,14 @@ app.get('/get-courses', async (req, res) => {
     }
 });
 
-// 2. PUSH COURSE DATA (Android calls this to upload a course)
+// 2. PUSH COURSE DATA
 app.post('/save-course', async (req, res) => {
     try {
-        // Fix: Check if db is ready.
         if (!db) {
             return res.status(500).json({ error: "Database not connected yet. Please try again in a moment." });
         }
-        const collection = db.collection("items");
+        // CHANGED: Your real collection name is "lungi collection1"
+        const collection = db.collection("lungi collection1");
         
         const today = new Date();
         const midnightDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
