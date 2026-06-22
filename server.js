@@ -127,7 +127,6 @@ app.post('/save-course', upload.single('file'), async (req, res) => {
 });
 
 
-
 // 6. Get Courses Endpoint
 app.get('/get-courses', async (req, res) => {
   try {
@@ -139,6 +138,57 @@ app.get('/get-courses', async (req, res) => {
     res.status(500).json({ error: 'Failed to retrieve courses.' });
   }
 });
+
+
+// 7. NEW DETAILED DELETE ENDPOINT
+app.delete('/delete-course/:id', async (req, res) => {
+  try {
+    const courseId = req.params.id;
+    console.log(`=== NEW DELETE REQUEST FOR ID: ${courseId} ===`);
+
+    // A. Verify if the provided ID is a valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(courseId)) {
+        return res.status(400).json({ error: 'Invalid course ID format.' });
+    }
+
+    // B. Find the course document inside MongoDB first
+    const course = await CourseModel.findById(courseId);
+    if (!course) {
+        return res.status(404).json({ error: 'Course record not found in MongoDB.' });
+    }
+
+    // C. Check if a Google Drive link exists and extract the File ID
+    const url = course.fileUrl;
+    if (url && url.includes("/d/")) {
+        try {
+            // Google webViewLink pattern: https://google.com
+            // We split by '/d/' and then take the next segment before the closing '/'
+            const fileId = url.split("/d/")[1].split("/")[0];
+            console.log(`Targeting Google Drive File ID for deletion: ${fileId}`);
+
+            // Request file removal from Google Drive
+            await drive.files.delete({ fileId: fileId });
+            console.log("File successfully purged from Google Drive.");
+        } catch (driveError) {
+            // Log the error but do not halt execution. We still want to clear the MongoDB row.
+            console.error("⚠️ Google Drive deletion warning:", driveError.message);
+        }
+    } else {
+        console.log("No associated Google Drive file found for this record. Skipping Drive cleanup.");
+    }
+
+    // D. Erase the text document data row from MongoDB Atlas
+    await CourseModel.findByIdAndDelete(courseId);
+    console.log("Database record deleted from MongoDB.");
+
+    res.status(200).json({ message: 'Course and corresponding cloud file deleted successfully!' });
+
+  } catch (error) {
+    console.error('CRITICAL ERROR during delete-course execution:', error);
+    res.status(500).json({ error: 'Server failed to process file deletion.', details: error.message });
+  }
+});
+
 
 // Health check
 app.get('/', (req, res) => {
