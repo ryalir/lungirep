@@ -194,10 +194,11 @@ app.get('/get-courses', async (req, res) => {
 });
 
 
-// Allows Android app to pull the saved notification history logs
+// Allows Android app to pull just the title and body from saved notification history logs
 app.get('/get-notifications', async (req, res) => {
   try {
-    const alertsLogs = await NotificationHistoryModel.find().sort({ sentAt: -1 });
+    // 🌟 OPTIMIZED: The string 'title body -_id' means ONLY fetch title and body, and explicitly hide the default _id field
+    const alertsLogs = await NotificationHistoryModel.find({}, 'title body -_id').sort({ sentAt: -1 });
     res.status(200).json(alertsLogs);
   } catch (error) {
     console.error('Get Notifications History Error:', error);
