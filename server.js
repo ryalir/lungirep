@@ -6,7 +6,7 @@ const multer = require('multer');
 const mongoose = require('mongoose');
 const { google } = require('googleapis');
 const { Readable } = require('stream');
-// 🌟 ADDED: Import Firebase Admin SDK
+// Import Firebase Admin SDK
 const admin = require('firebase-admin');
 
 const app = express();
@@ -15,7 +15,7 @@ const port = process.env.PORT || 3000;
 // Middleware to process traditional JSON requests
 app.use(express.json());
 
-// 🌟 ADDED: Initialize Firebase Admin securely using Render Environment Variable
+// Initialize Firebase Admin securely using Render Environment Variable
 try {
   const firebaseJson = JSON.parse(process.env.FIREBASE_CREDENTIALS);
   admin.initializeApp({
@@ -31,7 +31,7 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('MongoDB Connected to lungi database'))
   .catch(err => console.error('MongoDB Connection Error:', err));
 
-// 2. Exact Match Course Schema mapping to your exact collection
+// 2. Course Schema mapping to your exact collection
 const CourseSchema = new mongoose.Schema({
   courseCode: { type: String, required: true },
   courseName: { type: String, required: true },
@@ -47,6 +47,21 @@ const CourseSchema = new mongoose.Schema({
 });
 
 const CourseModel = mongoose.model('Course', CourseSchema);
+
+
+// 🌟 NEW SCHEMA ADDED: Tracks the history of sent push notifications
+const NotificationHistorySchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  body: { type: String, required: true },
+  topic: { type: String, default: 'courses' },
+  sentAt: { type: Date, default: Date.now }
+}, {
+  // Explicitly forces Mongoose to save inside a new collection called 'notification collection'
+  collection: 'notification collection'
+});
+
+const NotificationHistoryModel = mongoose.model('NotificationHistory', NotificationHistorySchema);
+
 
 // 3. Configure Multer to process files in memory safely
 const upload = multer({ storage: multer.memoryStorage() });
@@ -110,20 +125,39 @@ app.post('/save-course', upload.single('file'), async (req, res) => {
 
     await newCourse.save();
 
-    // 🌟 ADDED: Broadcast a Push Notification to your Android App instantly upon successful save
+    // Broadcast a Push Notification and log it to MongoDB
     try {
+      const notifTitle = '🆕 New Course Added!';
+      const notifBody = `${courseCode}: ${courseName} has been uploaded by ${uploadedBy || 'Anonymous'}.`;
+
       const message = {
         notification: {
-          title: '🆕 New Course Added!',
-          body: `${courseCode}: ${courseName} has been uploaded by ${uploadedBy || 'Anonymous'}.`
+          title: notifTitle,
+          body: notifBody
         },
-        topic: 'courses' // Your Android devices will subscribe to this 'courses' channel string
+        android: {
+          notification: {
+            channelId: 'eduhub_notifications' // Targets your exact Android channel string
+          }
+        },
+        topic: 'courses' 
       };
 
+      // A. Send across the live Firebase network
       const response = await admin.messaging().send(message);
       console.log('Push Notification Broadcasted Successfully:', response);
+
+      // B. 🌟 NEW LOGIC: Save a copy of this sent alert into MongoDB Atlas permanently
+      const historicLog = new NotificationHistoryModel({
+        title: notifTitle,
+        body: notifBody,
+        topic: 'courses'
+      });
+      await historicLog.save();
+      console.log('Notification saved to MongoDB history collection.');
+
     } catch (pushError) {
-      console.error('Failed to dispatch push notification token:', pushError.message);
+      console.error('Failed to process notification sequence:', pushError.message);
     }
 
     res.status(201).json({ 
@@ -150,6 +184,19 @@ app.get('/get-courses', async (req, res) => {
 });
 
 
+// 🌟 NEW ENDPOINT ADDED: Allows Android app to pull the saved notification history logs
+app.get('/get-notifications', async (req, res) => {
+  try {
+    // Fetches history rows from 'notification collection' sorted with newest alerts first
+    const alertsLogs = await NotificationHistoryModel.find().sort({ sentAt: -1 });
+    res.status(200).json(alertsLogs);
+  } catch (error) {
+    console.error('Get Notifications History Error:', error);
+    res.status(500).json({ error: 'Failed to retrieve notification historical logs.' });
+  }
+});
+
+
 // 7. DETAILED DELETE ENDPOINT
 app.delete('/delete-course/:id', async (req, res) => {
   try {
@@ -166,7 +213,7 @@ app.delete('/delete-course/:id', async (req, res) => {
     const url = course.fileUrl;
     if (url && url.includes("/d/")) {
         try {
-            const fileId = url.split("/d/")[1].split("/")[0];
+            const fileId = url.split("/d/").split("/");
             await drive.files.delete({ fileId: fileId });
         } catch (driveError) {
             console.error("⚠️ Google Drive deletion warning:", driveError.message);
