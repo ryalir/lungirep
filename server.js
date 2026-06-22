@@ -25,6 +25,7 @@ const CourseSchema = new mongoose.Schema({
   year: String,
   semester: String,
   regulation: String,
+  category: String, // 🌟 ADDED: New field to store course categories (e.g., Core, Elective, Lab)
   fileUrl: String, 
   uploadedBy: String,
   createOn: { type: Date, default: Date.now } 
@@ -58,7 +59,8 @@ app.post('/save-course', upload.single('file'), async (req, res) => {
       console.log(`File Name: ${req.file.originalname}, MimeType: ${req.file.mimetype}, Size: ${req.file.size} bytes`);
     }
 
-    const { courseCode, courseName, year, semester, regulation, uploadedBy } = req.body;
+    // 🌟 UPDATED: Added category extraction from the incoming Android payload body
+    const { courseCode, courseName, year, semester, regulation, category, uploadedBy } = req.body;
 
     if (!courseCode || !courseName) {
       return res.status(400).json({ error: 'courseCode and courseName are required.' });
@@ -110,6 +112,7 @@ app.post('/save-course', upload.single('file'), async (req, res) => {
       year,
       semester,
       regulation,
+      category, // 🌟 ADDED: Saved category data string into the database record
       fileUrl: finalFileUrl, // Will be an empty string if req.file is missing
       uploadedBy: uploadedBy || 'Anonymous'
     });
@@ -162,7 +165,6 @@ app.delete('/delete-course/:id', async (req, res) => {
     if (url && url.includes("/d/")) {
         try {
             // Google webViewLink pattern: https://google.com
-            // We split by '/d/' and then take the next segment before the closing '/'
             const fileId = url.split("/d/")[1].split("/")[0];
             console.log(`Targeting Google Drive File ID for deletion: ${fileId}`);
 
