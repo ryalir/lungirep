@@ -48,20 +48,17 @@ const CourseSchema = new mongoose.Schema({
 
 const CourseModel = mongoose.model('Course', CourseSchema);
 
-
-// 🌟 NEW SCHEMA ADDED: Tracks the history of sent push notifications
+// Tracks the history of sent push notifications
 const NotificationHistorySchema = new mongoose.Schema({
   title: { type: String, required: true },
   body: { type: String, required: true },
   topic: { type: String, default: 'courses' },
   sentAt: { type: Date, default: Date.now }
 }, {
-  // Explicitly forces Mongoose to save inside a new collection called 'notification collection'
   collection: 'notification collection'
 });
 
 const NotificationHistoryModel = mongoose.model('NotificationHistory', NotificationHistorySchema);
-
 
 // 3. Configure Multer to process files in memory safely
 const upload = multer({ storage: multer.memoryStorage() });
@@ -75,18 +72,41 @@ oauth2Client.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN })
 const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
 
-// 5. Save Course with File Upload Endpoint
+// 5. Save Course with File Upload Endpoint (With Strict Duplicate Validation)
 app.post('/save-course', upload.single('file'), async (req, res) => {
   try {
     console.log("=== NEW UPLOAD REQUEST ===");
     const { courseCode, courseName, year, semester, regulation, category, uploadedBy } = req.body;
 
+    // A. Validation: Ensure required text entries are present
     if (!courseCode || !courseName) {
       return res.status(400).json({ error: 'courseCode and courseName are required.' });
     }
 
+    // B. 🌟 NEW DUPLICATE VALIDATION LOGIC
+    // The server searches MongoDB for a record where all 6 structural parameters match exactly
+    const duplicateCourse = await CourseModel.findOne({
+      courseCode: courseCode,
+      courseName: courseName,
+      category: category,
+      regulation: regulation,
+      year: year,
+      semester: semester
+    });
+
+    // If an identical match is discovered, we stop execution immediately.
+    // This blocks both the Google Drive upload and the MongoDB write, saving system space.
+    if (duplicateCourse) {
+      console.warn(`⚠️ Blocked upload: Course combination already exists.`);
+      return res.status(409).json({ 
+        error: 'Duplicate Record Found', 
+        message: 'This specific course material configuration has already been uploaded.' 
+      });
+    }
+
     let finalFileUrl = "";
 
+    // C. Proceed with Google Drive upload since the record is unique
     if (req.file) {
       const fileStream = Readable.from(req.file.buffer);
       const driveResponse = await drive.files.create({
@@ -111,7 +131,7 @@ app.post('/save-course', upload.single('file'), async (req, res) => {
       }
     }
 
-    // Save metadata completely inline with your document structure
+    // D. Save unique metadata into your document structure
     const newCourse = new CourseModel({
       courseCode,
       courseName,
@@ -125,36 +145,26 @@ app.post('/save-course', upload.single('file'), async (req, res) => {
 
     await newCourse.save();
 
-    // Broadcast a Push Notification and log it to MongoDB
+    // E. Broadcast a Push Notification and log it to MongoDB
     try {
       const notifTitle = '🆕 New Course Added!';
       const notifBody = `${courseCode}: ${courseName} has been uploaded by ${uploadedBy || 'Anonymous'}.`;
 
       const message = {
-        notification: {
-          title: notifTitle,
-          body: notifBody
-        },
-        android: {
-          notification: {
-            channelId: 'eduhub_notifications' // Targets your exact Android channel string
-          }
-        },
+        notification: { title: notifTitle, body: notifBody },
+        android: { notification: { channelId: 'eduhub_notifications' } },
         topic: 'courses' 
       };
 
-      // A. Send across the live Firebase network
       const response = await admin.messaging().send(message);
       console.log('Push Notification Broadcasted Successfully:', response);
 
-      // B. 🌟 NEW LOGIC: Save a copy of this sent alert into MongoDB Atlas permanently
       const historicLog = new NotificationHistoryModel({
         title: notifTitle,
         body: notifBody,
         topic: 'courses'
       });
       await historicLog.save();
-      console.log('Notification saved to MongoDB history collection.');
 
     } catch (pushError) {
       console.error('Failed to process notification sequence:', pushError.message);
@@ -184,10 +194,9 @@ app.get('/get-courses', async (req, res) => {
 });
 
 
-// 🌟 NEW ENDPOINT ADDED: Allows Android app to pull the saved notification history logs
+// Allows Android app to pull the saved notification history logs
 app.get('/get-notifications', async (req, res) => {
   try {
-    // Fetches history rows from 'notification collection' sorted with newest alerts first
     const alertsLogs = await NotificationHistoryModel.find().sort({ sentAt: -1 });
     res.status(200).json(alertsLogs);
   } catch (error) {
